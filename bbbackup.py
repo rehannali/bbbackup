@@ -53,6 +53,8 @@
 """
 
 from argparse import RawTextHelpFormatter
+from time import perf_counter, strftime, gmtime
+
 from git import Repo
 from requests.auth import HTTPBasicAuth
 from datetime import datetime
@@ -78,7 +80,7 @@ import traceback
 
 # CONSTANT VALUES
 APP_VERSION = "v2.0"
-APP_BUILD = "42"
+APP_BUILD = "1"
 APP_PATH = os.path.dirname(os.path.abspath(__file__))
 APP_CONFIG_FILE = "bbbackup.cfg"
 APP_LOGO = """
@@ -198,7 +200,10 @@ def is_running_interactively():
 
 def exit_with_code(code, optional_message=None):
     finish_time = datetime.now()
+    finish = perf_counter()
     printstyled("FINISHED: " + str(finish_time), "yellow", "bold")
+    printstyled("TOTAL TIME ELAPSED: " + strftime("%H Hour(s), %M Minute(s) and %S Second(s)",
+                                                  gmtime(finish - start)), "yellow", "bold")
     exit_message = ""
     if code == 0:
         exit_message = "BACKUP: BYE, BYE."
@@ -1605,6 +1610,8 @@ def bitbucket_clone(repos):
         "white",
     )
 
+    auth_token_for_cloning_repo = bitbucket_api_oauth2_token()
+
     for repo in repos:
         repo_slug = repo["slug"]
         backup_local_repo_path = os.path.abspath(
@@ -1650,7 +1657,7 @@ def bitbucket_clone(repos):
                 mark_repo_sync(backup_local_repo_path)
                 try:
                     remote_repo_path = "https://x-token-auth:{token}@bitbucket.org/{team}/{slug}.git".format(
-                        token=bitbucket_api_oauth2_token(),
+                        token=auth_token_for_cloning_repo,
                         team=CONFIG_TEAM,
                         slug=repo_slug
                     )
@@ -2067,8 +2074,9 @@ printstyled("BACKUP: WELCOME.", "cyan")
 
 is_interactive = is_running_interactively()
 
-lunch_time = datetime.now()
-printstyled("STARTED: " + str(lunch_time), "yellow", "bold")
+start = perf_counter()
+launch_time = datetime.now()
+printstyled("STARTED: " + str(launch_time), "yellow", "bold")
 
 print(APP_LOGO.format(APP_VERSION))
 
