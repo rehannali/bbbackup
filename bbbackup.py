@@ -308,7 +308,7 @@ def get_size(dir_path):
 
 
 # HELPER TO COLORIZE PRINT OUTPUT
-class termcolor:
+class TermColor:
     RED = "\033[91m"
     GREEN = "\033[92m"
     YELLOW = "\033[93m"
@@ -326,22 +326,22 @@ def printstyled(text="", color="white", style="plain"):
         return
     if colorized_mode:
         if color == "red":
-            text = termcolor.RED + text
+            text = TermColor.RED + text
         if color == "green":
-            text = termcolor.GREEN + text
+            text = TermColor.GREEN + text
         if color == "yellow":
-            text = termcolor.YELLOW + text
+            text = TermColor.YELLOW + text
         if color == "blue":
-            text = termcolor.BLUE + text
+            text = TermColor.BLUE + text
         if color == "magenta":
-            text = termcolor.MAGENTA + text
+            text = TermColor.MAGENTA + text
         if color == "cyan":
-            text = termcolor.CYAN + text
+            text = TermColor.CYAN + text
         if style == "bold":
-            text = termcolor.BOLD + text
+            text = TermColor.BOLD + text
         if style == "underlined":
-            text = termcolor.UNDERLINE + text
-        text += termcolor.ENDC
+            text = TermColor.UNDERLINE + text
+        text += TermColor.ENDC
     print(text)
 
 
@@ -689,8 +689,8 @@ def slack_config_load(should_ask=True):
         if is_running_interactively() and slackconfig:
             print("---    PLEASE ENTER SLACK CHANNEL AND API TOKEN NOW    ---")
             print('--- (WILL BE STORED IN SECURE KEYRING INFRASTRUCTURE.) ---')
-            input_token = input(termcolor.BLUE + "API TOKEN: " + termcolor.ENDC)
-            input_channel = input(termcolor.BLUE + "  CHANNEL: " + termcolor.ENDC)
+            input_token = input(TermColor.BLUE + "API TOKEN: " + TermColor.ENDC)
+            input_channel = input(TermColor.BLUE + "  CHANNEL: " + TermColor.ENDC)
             if input_token and input_channel:
                 ring.set_password(CRED_KEY_SERVICE, CRED_KEY_SLACK_TOKEN, input_token)
                 SLACK_API_TOKEN = input_token
@@ -771,9 +771,9 @@ def oauth_config_load(should_ask=True):
         if is_running_interactively():
             print("---  PLEASE ENTER OAUTH NAME/KEY/SECRET FOR BITBUCKET  ---")
             print("--- (WILL BE STORED IN SECURE KEYRING INFRASTRUCTURE.) ---")
-            input_key = input(termcolor.BLUE + "     OAUTH KEY: " + termcolor.ENDC)
-            input_secret = input(termcolor.BLUE + "  OAUTH SECRET: " + termcolor.ENDC)
-            input_name = input(termcolor.BLUE + "OAUTH APP NAME: " + termcolor.ENDC)
+            input_key = input(TermColor.BLUE + "     OAUTH KEY: " + TermColor.ENDC)
+            input_secret = input(TermColor.BLUE + "  OAUTH SECRET: " + TermColor.ENDC)
+            input_name = input(TermColor.BLUE + "OAUTH APP NAME: " + TermColor.ENDC)
             if input_name and input_key and input_secret:
                 ring.set_password(CRED_KEY_SERVICE, CRED_KEY_OAUTH_NAME, input_name)  # type: ignore
                 OAUTH_CLIENT_NAME = input_name
@@ -851,12 +851,12 @@ def bitbucket_config_load(should_ask=True):
         if is_running_interactively():
             print("--- PLEASE ENTER CREDENTIALS FOR BITBUCKET ACCOUNT NOW ---")
             print("--- (WILL BE STORED IN SECURE KEYRING INFRASTRUCTURE.) ---")
-            input_uid = input(termcolor.BLUE + "  BitBucket USER ID: " + termcolor.ENDC)
+            input_uid = input(TermColor.BLUE + "  BitBucket USER ID: " + TermColor.ENDC)
             input_password = getpass(
-                prompt=termcolor.BLUE + " BitBucket PASSWORD: " + termcolor.ENDC
+                prompt=TermColor.BLUE + " BitBucket PASSWORD: " + TermColor.ENDC
             )
             input_team = input(
-                termcolor.BLUE + "  BitBucket TEAM ID: " + termcolor.ENDC
+                TermColor.BLUE + "  BitBucket TEAM ID: " + TermColor.ENDC
             )
             if input_uid and input_password:
                 ring.set_password(CRED_KEY_SERVICE, CRED_KEY_UID, input_uid)
@@ -1164,9 +1164,11 @@ def bitbucket_api_oauth2_token():
     data = {
         "code": "bar",
         "grant_type": "client_credentials",
-        "redirect_uri": "http://127.0.0.1/",
+        "redirect_uri": "http://127.0.0.1:8021/",
     }
+
     session = bitbucket_service.get_auth_session(data=data, decoder=json.loads)
+
     if session.access_token:
         printstyled(
             "BITBUCKET: Received OAuth 2.0 Token: {}".format(session.access_token),
