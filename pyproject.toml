@@ -1,0 +1,26 @@
+[tool.poetry]
+name = "bbbackup"
+version = "0.1.0"
+description = "Bitbucket automatic backup solution providing Cloud-to-Local and Cloud-to-Cloud repository cloning written in Python"
+authors = ["Rehan Ali <rehannali@programmer.net>"]
+license = "MIT"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+gitpython = "^3.1.43"
+requests = "^2.31.0"
+rauth = "^0.7.3"
+slackclient = "^2.9.4"
+keyring = "^25.2.0"
+configparser = "^7.0.0"
+
+[tool.poetry.group.dev.dependencies]
+black = "^24.4.2"
+isort = "^5.13.2"
+mypy = "^1.10.0"
+flake8 = "^7.0.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
