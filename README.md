@@ -8,7 +8,8 @@ Please install this script on a UNIX machine which is capable of executing scrip
 Following files need to be deployed to a target machine for installation:
 
 * `bbbackup.py`
-* `requirements.txt`
+* `pyproject.toml`
+* `poetry.lock`
 * `bbbackup.sh` (optional for automation)
 * `de.openreply.bbbackup.plist` (optional for automation on macOS)
 * `bbbackup_sample.cfg` (optional to see how you could configure the app manually)
@@ -36,14 +37,23 @@ The script supports following features:
 
 ## Requirements
 
-The script needs a certain environment of python modules to execute its tasks. For details see `requirements.txt` to install needed python libraries using `pip install -r requirements.txt` on the commandline.
+The script needs a certain environment of python modules to execute its tasks. For details see `pyproject.toml` to install needed python libraries using `poetry` on the commandline.
 
-* Python 3 (use a *virtual environment* with `python3 -m venv <myfolder>`)
-* **slackclient (v2.0.0)** — used to support messaging via Slack
-* **GitPython (v2.1.11)** — used to support repo cloing via git
-* **keyring (v19.0.1)** — used to store credentials and API keys/secrets on local OS's
-* **rauth (v0.7.3)** — used to support OAuth2 requests against BitBucket API
-* **configparser (v3.7.4)** — used to enable usage of config-file
+### Installation
+
+* **HomeBrew** — `brew install poetry` (to install poetry)
+* **pipx** — `pipx install poetry` (to install poetry)
+
+For `pipx` installation, follow [pipx installation guide.](https://pipx.pypa.io/stable/installation/).
+
+To install the required python modules, please execute the `poetry install --no-root --sync --without dev`
+
+* **poetry** — used to manage python dependencies
+* **slackclient** — used to support messaging via Slack
+* **GitPython** — used to support repo cloning via git
+* **keyring** — used to store credentials and API keys/secrets on local OS's
+* **rauth** — used to support OAuth2 requests against BitBucket API
+* **configparser** — used to enable usage of config-file
 
 
 ## Installation
@@ -69,49 +79,44 @@ if no Python 3 is available on the machine, please install it using brew
 `brew update`  
 `brew install python3`
 
-create a virtual environment with Python 3  
-`python3 -m venv BitBucketBackup`  
+check if you have poetry installed
+`poetry --version`  
+
+if no poetry is available on the machine, please install it using brew
+`brew install poetry`
 
 change into the created environment folder  
 `cd BitBucketBackup`
 
 copy following files into the current folder:  
 
-* `requirements.txt`
+* `pyproject.toml`
+* `poetry.lock`
 * `bbbackup.py`
 * `bbbackup.sh`
 * `de.openreply.bbbackup.plist`
 
-activate virtual environment  
-`source bin/activate`
-
-check if python 3 is now available  
-`python --version` (this should give something like: "Python 3.7.1")
-
-ensure you have the latest pip python module manager installed  
-`pip install --upgrade pip` (use sudo if needed)
+enable the in project virtual environment to avoid any clutter  
+`poetry config virtualenvs.in-project true`
 
 install python modules required  
-`pip install -r requirements.txt`
+`poetry install --no-root --sync --without dev`
 
 #### Configuration ####
 
 test if the main backup script is working by entering the following (this should give you the help page; you need to have the virtual environment active for this to work!):  
-`python bbbackup.py --help`
+`poetry run python bbbackup.py --help`
 
-edit the file `bbbackup.sh` and adjust all paths and adjust the parameters to backup  
-
-**IMPORTANT!!** upload the public ssh-key of the account on the machine to BitBucket, otherwise the backup script won't be able to authentify correctly to clone repositories. you can copy the public key to your clipboard on the mac using  
-`pbcopy < ~/.ssh/id_rsa.pub `
+edit the file `bbbackup.sh` and adjust all paths and adjust the parameters to back up
 
 test the `bbbackup.sh` script by executing it once manually (this will output log statements to check what is happening). if you have not yet provided any credentials the script will ask for BitBucket user credentials. Please provide these credentials incl. username, password and teamname. Execute the shellscript to test if the script works as expected:  
 `sh ./bbbackup.sh`
 
 if the script should be able to report via slack, please execute the python script manually as follows to configure slack. (See [Create a Slack app tutorial](https://github.com/slackapi/python-slackclient/blob/master/tutorial/01-creating-the-slack-app.md) on how to setup Slack) you will need to provide the slack API TOKEN of a slack-bot-user and provide a slack #CHANNEL where to post messages to.  
-`python bbbackup.py -f /Users/$MyUserName/Backup/BitBucketBackup/clonedbackups/ --config-slack`
+`poetry run  python bbbackup.py -f /Users/$MyUserName/Backup/BitBucketBackup/clonedbackups/ --config-slack`
 
 you can test if slack is working by sending a testmessage as follows:
-`python bbbackup.py -f /Users/$MyUserName/Backup/BitBucketBackup/clonedbackups/ --message-slack "This is a test."`
+` poetry run python bbbackup.py -f /Users/$MyUserName/Backup/BitBucketBackup/clonedbackups/ --message-slack "This is a test."`
 
 #### Automation (on local machine) ####
 
@@ -141,9 +146,14 @@ if you want to remove the service from scheduling and executing automatically ev
 
 (for `launchctl load` and `launchctl unload` you need to provide the full absolute path always!!!)
 
+## Important
+
+While creating oauth2 credentials for BitBucket, please make sure to provide the redirect url as `http://localhost:8021`.
+If you want other url, you have to manually change the redirect url in the script.
+
 ## Help
 
-Calling `python bbbackup.py --help` gives you all the options the app supports.
+Calling `poetry run python bbbackup.py --help` gives you all the options the app supports.
 
 ```
 usage: bbbackup.py [-h] [-f FILEPATH | -c CONFIGFILE] [-a DATE]
