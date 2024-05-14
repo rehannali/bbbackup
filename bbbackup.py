@@ -65,6 +65,7 @@ from getpass import getpass
 from slack.errors import SlackApiError
 from rauth import OAuth2Service
 from configparser import ConfigParser
+from pymsteams import connectorcard, TeamsWebhookException
 from keyring.errors import KeyringLocked, InitError, PasswordDeleteError
 
 import argparse
@@ -177,11 +178,14 @@ CONFIG_PWD = None
 CONFIG_TEAM = None
 
 # SLACK CREDENTIALS
-SLACK_API_TOKEN = None
-SLACK_CHANNEL = None
+SLACK_API_TOKEN: str | None = None
+SLACK_CHANNEL: str | None = None
 SLACK_TO_CHANNEL = DEFAULT_SLACK_TO_CHANNEL
 CRED_KEY_SLACK_CHANNEL = "SLACK_CHANNEL"
 CRED_KEY_SLACK_TOKEN = "SLACK_TOKEN"
+
+# MS TEAMS CONFIGURATION
+TEAMS_WEBHOOK_URL: str | None = None
 
 """
 **********************************
@@ -501,6 +505,7 @@ def configuration_import():
     global AUTH, OAUTH_CLIENT_KEY_OR_ID, OAUTH_CLIENT_SECRET, OAUTH_CLIENT_NAME, CONFIG_UID, CONFIG_PWD, CONFIG_TEAM
     global SLACK_API_TOKEN, SLACK_CHANNEL, BACKUP_ROOT_DIRECTORY, BACKUP_MAX_RETRIES, BACKUP_MAX_FAILS
     global BACKUP_ALL_BRANCHES, BACKUP_MIN_FREESPACE_GIGA, BACKUP_STORE_DAYS, BACKUP_ARCHIVE_ROOT_DIRECTORY
+    global LOG_OUTPUT, LOG_COLORIZED, TEAMS_WEBHOOK_URL
 
     CONFIG_FILE_PATH = APP_PATH + "/" + APP_CONFIG_FILE
     if not os.path.exists(CONFIG_FILE_PATH):
@@ -557,6 +562,7 @@ def configuration_import():
         CONFIG_TEAM = config_file.get("bitbucket_account", "teamname")
         SLACK_API_TOKEN = config_file.get("slack", "api_token")
         SLACK_CHANNEL = config_file.get("slack", "channel_to_post")
+        TEAMS_WEBHOOK_URL = config_file.get("msteams", "webhook_url")
         BACKUP_ALL_BRANCHES = config_file.get("backup", "all_branches")
         BACKUP_ROOT_DIRECTORY = config_file.get("backup", "filepath")
         BACKUP_ARCHIVE_ROOT_DIRECTORY = config_file.get("backup", "archive_path")
@@ -575,7 +581,7 @@ def configuration_import():
         )
         return
     printstyled(
-        "CONFIG I/O: Config '{}' succesfully imported.".format(CONFIG_FILE_PATH),
+        "CONFIG I/O: Config '{}' successfully imported.".format(CONFIG_FILE_PATH),
         "green",
     )
 
@@ -639,6 +645,9 @@ def configuration_export():
     )
     config_file.set("slack", "api_token", configuration_stringify(SLACK_API_TOKEN))
     config_file.set("slack", "channel_to_post", configuration_stringify(SLACK_CHANNEL))
+    # MSTEAMS
+    config_file.add_section("msteams")
+    config_file.set("msteams", "webhook_url", configuration_stringify(TEAMS_WEBHOOK_URL))
     # STORE backup
     config_file.add_section("backup")
     config_file.set(
@@ -677,14 +686,46 @@ def configuration_export():
     try:
         with open(CONFIG_FILE_PATH, "w") as file_to_write:
             config_file.write(file_to_write)
-    except Exception as e:
+    except Exception as ex:
         printstyled(
             "CONFIG I/O: Failed to save config '{}'.\n Error: {}".format(
-                CONFIG_FILE_PATH, e
+                CONFIG_FILE_PATH, ex
             ),
             "red",
         )
     return
+
+
+"""
+**********************************
+*** MS TEAMS
+**********************************
+"""
+
+
+def msteams_send_message_to_channel(message):
+    global TEAMS_WEBHOOK_URL
+    if not notify_mode:
+        if log_mode and TEAMS_WEBHOOK_URL:
+            printstyled(
+                "MSTEAMS: SUPPRESSING NOTIFICATION\n>>>\n" + message + "\n<<<", "white"
+            )
+        return
+    if TEAMS_WEBHOOK_URL is None or len(TEAMS_WEBHOOK_URL) == 0 or TEAMS_WEBHOOK_URL.startswith("http") is False:
+        printstyled("MSTEAMS: MISSING WEBHOOK URL", "red")
+    else:
+        if message:
+            printstyled("MSTEAMS: SENDING MESSAGE '{}'".format(message), "cyan")
+            try:
+                teams_message = connectorcard(TEAMS_WEBHOOK_URL)
+                teams_message.title(f"BITBUCKET : {BACKUP_ARCHIVE_DIRECTORY}")
+                teams_message.text(message)
+                teams_message.send()
+                printstyled("MSTEAMS: MESSAGE WAS SENT.", "green")
+            except TeamsWebhookException as ex:
+                printstyled("MSTEAMS: MESSAGE NOT SENT. EXCEPTION: {}".format(ex), "red")
+        else:
+            printstyled("MSTEAMS: NO MESSAGE TO SEND.", "red")
 
 
 """
@@ -703,7 +744,7 @@ def slack_send_message_to_channel(message, channel):
                 "SLACK: SUPPRESSING NOTIFICATION\n>>>\n" + message + "\n<<<", "white"
             )
         return
-    if SLACK_API_TOKEN is None:
+    if SLACK_API_TOKEN is None or len(str(SLACK_API_TOKEN)) == 0:
         printstyled("SLACK: MISSING API TOKEN", "red")
     else:
         if message:
@@ -711,8 +752,8 @@ def slack_send_message_to_channel(message, channel):
             client = None
             try:
                 client = slack.WebClient(token=SLACK_API_TOKEN, timeout=60)
-            except Exception as e:
-                printstyled("SLACK: API EXCEPTION {}".format(e), "red")
+            except Exception as ex:
+                printstyled("SLACK: API EXCEPTION {}".format(ex), "red")
             if not channel:
                 channel = "#random"
             if client:
@@ -749,6 +790,7 @@ def slack_send_message_of_category(message, category=None):
     if message_prefix:
         message = message_prefix + "\n" + message
     slack_send_message_to_channel(message, SLACK_CHANNEL)
+    msteams_send_message_to_channel(message)
 
 
 def slack_selftest():
@@ -884,7 +926,8 @@ def oauth_config_load(should_ask=True):
             if oauthconfig:
                 exit_with_code(
                     6,
-                    "Missing OAuth 2.0 credentials could not be requested interactively, because script not running in tty/shell context.",
+                    "Missing OAuth 2.0 credentials could not be requested interactively, "
+                    "because script not running in tty/shell context.",
                 )
     else:
         printstyled("OAUTH: CONFIGURED.", "green")
@@ -2135,7 +2178,8 @@ configimport_parser.add_argument(
     dest="config_import_mode",
     action="store_true",
     required=False,
-    help="Read/import current parameters from file '{}'\nThis will set the OAUTH, ACCOUNT & SLACK info for the current runtime context, to check the values".format(
+    help="Read/import current parameters from file '{}'\n"
+         "This will set the OAUTH, ACCOUNT & SLACK info for the current runtime context, to check the values".format(
         APP_CONFIG_FILE
     ),
 )
@@ -2334,6 +2378,10 @@ if __name__ == "__main__":
         printstyled("SLACK: CONFIGURATION ...", "cyan")
         printstyled("CHANNEL: {}".format(SLACK_CHANNEL), "blue")
         printstyled("  TOKEN: {}".format(SLACK_API_TOKEN), "blue")
+
+    if TEAMS_WEBHOOK_URL:
+        printstyled("MSTEAMS: CONFIGURATION ...", "cyan")
+        printstyled("WEBHOOK URL: {}".format(TEAMS_WEBHOOK_URL), "blue")
 
     if message_slack and len(str(message_slack)) > 0:
         slack_send_message_to_channel(message_slack, SLACK_CHANNEL)
