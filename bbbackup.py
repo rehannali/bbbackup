@@ -1934,6 +1934,7 @@ main_parser.add_argument(
     help="Absolute path to a directory which will hold the managed backups",
 )
 main_parser.add_argument(
+    "-b",
     "--archive-path",
     dest="archive_path",
     required=False,

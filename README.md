@@ -156,35 +156,37 @@ If you want other url, you have to manually change the redirect url in the scrip
 Calling `poetry run python bbbackup.py --help` gives you all the options the app supports.
 
 ```
-usage: bbbackup.py [-h] [-f FILEPATH | -c CONFIGFILE] [-a DATE]
-                   [-m MESSAGESLACK] [-d DAYS] [-s STORAGELIMIT]
-                   [-r RETRY_LIMIT] [-w WARNING_LIMIT]
-                   [--backup | --no-backup] [--retry | --no-retry]
-                   [--config-oauth2 | --no-config-oauth2]
+usage: bbbackup.py [-h] [-f FILEPATH | -b ARCHIVE_PATH | -c CONFIGFILE] 
+                   [-a DATE] [-m MESSAGESLACK] [-d DAYS]
+                   [-s STORAGELIMIT] [-r RETRY_LIMIT] [-w WARNING_LIMIT]
+                   [--retry | --no-retry] [--backup | --no-backup] 
+                   [--config-oauth2 | --no-config-oauth2] 
                    [--config-bitbucket | --no-config-bitbucket]
-                   [--config-slack | --no-config-slack]
+                   [--config-slack | --no-config-slack] 
                    [--notify | --no-notify] [--oauth2 | --no-oauth2]
-                   [--config-import | --no-config-import]
-                   [--config-export | --no-config-export] [--log | --no-log]
-                   [--colors | --no-colors]
+                   [--config-import | --no-config-import] 
+                   [--config-export | --no-config-export] 
+                   [--log | --no-log] [--colors | --no-colors]
 
-  _    _    _             _             
- | |__| |__| |__  __ _ __| |___  _ _ __ 
+  _    _    _             _
+ | |__| |__| |__  __ _ __| |___  _ _ __
  | '_ \ '_ \ '_ \/ _` / _| / / || | '_ \
  |_.__/_.__/_.__/\__,_\__|_\_\\_,_| .__/
-                             v1.3 |_|   
-                                  
-bbbackup - clone all repos from a given BitBucket team/user
+                             v2.0 |_|
 
-Copyright (C) 2019  Helge Staedtler from Open Reply GmbH
+bbbackup - clone all repositories from a given BitBucket team/user
+
+Copyright (C) 2019-2020  Helge Staedtler from Open Reply GmbH
 This program comes with ABSOLUTELY NO WARRANTY
 This is free software, and you are welcome to redistribute it
 under certain conditions. DETAILS in the LICENSE file!
 
-optional arguments:
+options:
   -h, --help            show this help message and exit
   -f FILEPATH, --filepath FILEPATH
                         Absolute path to a directory which will hold the managed backups
+  -b ARCHIVE_PATH, --archive-path ARCHIVE_PATH
+                        Absolute path to a directory which will hold the managed archive backups
   -c CONFIGFILE, --configuration CONFIGFILE
                         Absolute path to configuration file where all necessary parameters are kept
                         *** WARNING: WILL OVERRIDE ALL COMMANDLINE ARGUMENTS LISTED HERE! ***
@@ -201,9 +203,8 @@ optional arguments:
                         Number of attempts to clone repository that failed on first try
                         [DEFAULT = 3]
   -w WARNING_LIMIT, --warning-limit WARNING_LIMIT
-                        Amount of failed repos allowed before we assume failure
+                        Amount of failed repositories allowed before we assume failure
                         [DEFAULT = 3]
-  --archive-path        Absolute path to a directory which will hold the managed archived backups
   --backup              Will start/continue a full backup
   --no-backup           [DEFAULT] Will analyze existing backup
   --retry               [DEFAULT] Retry failed backup automatically
