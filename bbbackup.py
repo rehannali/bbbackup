@@ -51,7 +51,9 @@
     https://github.com/samkuehn/bitbucket-backup
 
 """
-
+import glob
+import hashlib
+import tarfile
 from argparse import RawTextHelpFormatter
 from time import perf_counter, strftime, gmtime
 
@@ -141,10 +143,11 @@ CRED_KEY_OAUTH_SECRET = "OAUTH_SECRET"
 CRED_KEY_OAUTH_NAME = "OAUTH_NAME"
 
 # BACKUP STORAGE NAME
-BACKUP_ARCHIVE_PREFIX = "BACKUP"
-BACKUP_ARCHIVE_SUFFIX = "UTC"
+BACKUP_ARCHIVE_PREFIX = "backup"
+BACKUP_ARCHIVE_SUFFIX = "utc"
 BACKUP_ARCHIVE_DIRECTORY = None
 BACKUP_ROOT_DIRECTORY = DEFAULT_BACKUP_ROOT_DIRECTORY
+BACKUP_ARCHIVE_ROOT_DIRECTORY = DEFAULT_BACKUP_ROOT_DIRECTORY
 BACKUP_MAX_RETRIES = DEFAULT_BACKUP_MAX_RETRIES
 BACKUP_MAX_FAILS = DEFAULT_BACKUP_MAX_FAILS
 BACKUP_MIN_FREESPACE_GIGA = DEFAULT_BACKUP_MIN_FREESPACE_GIGA
@@ -235,7 +238,7 @@ def exit_with_code(code, optional_message=None):
         )
     elif code == 7:
         exit_message = ("BACKUP: ABORTED. (CODE = {}, no valid filepath for directory of backups provided, "
-                    "use --filepath or --configuration parameters)").format(
+                        "use --filepath or --configuration parameters)").format(
             str(code).zfill(2)
         )
     elif code == 8:
@@ -259,7 +262,8 @@ def exit_with_code(code, optional_message=None):
             str(code).zfill(2)
         )
     elif code == 13:
-        exit_message = "BACKUP: ABORTED. (CODE = {}, no supported secure credential store infrastructure found in current OS environment)".format(
+        exit_message = ("BACKUP: ABORTED. (CODE = {}, no supported secure credential "
+                        "store infrastructure found in current OS environment)").format(
             str(code).zfill(2)
         )
     else:
@@ -359,11 +363,56 @@ def write_file(filename, content):
         printstyled("FAILED TO WRITE FILE: {}".format(filename), "red")
 
 
+def create_tar_gz_file():
+    """Creates a tar.gz archive from the given source folder."""
+    source_dir = os.path.join(BACKUP_ROOT_DIRECTORY, BACKUP_ARCHIVE_DIRECTORY)
+    archive_path = os.path.join(BACKUP_ARCHIVE_ROOT_DIRECTORY, BACKUP_ARCHIVE_DIRECTORY + ".tar.gz")
+
+    if os.path.exists(archive_path):
+        printstyled("FILE I/O: ARCHIVE ALREADY EXISTS: {}".format(archive_path), "white")
+        printstyled("FILE I/O: SKIPPING ARCHIVE CREATION", "white")
+        return
+
+    try:
+        with tarfile.open(archive_path, "w:gz") as tar:
+            tar.add(source_dir, arcname=os.path.basename(source_dir))
+
+        printstyled("CREATED TAR.GZ FILE: {}".format(archive_path), "green")
+
+        checksum, algorithm = generate_checksum(archive_path)
+        checksum_file = os.path.join(BACKUP_ARCHIVE_ROOT_DIRECTORY, BACKUP_ARCHIVE_DIRECTORY + "." + algorithm)
+
+        with open(checksum_file, "w") as f:
+            f.write(f"{checksum} {os.path.basename(archive_path)}")
+
+        printstyled("CREATED CHECKSUM FILE: {}".format(checksum_file), "green")
+        printstyled("CHECKSUM: {}".format(checksum), "green")
+
+    except IOError:
+        printstyled("FAILED TO CREATE TAR.GZ or CHECKSUM FILE: {}".format(archive_path), "red")
+
+
 def delete_file(filename):
     try:
         os.remove(filename)
     except OSError:
         printstyled("FAILED TO DELETE FILE: {}".format(filename), "red")
+
+
+def delete_archive_and_checksum(backup_name):
+    archive_path = os.path.abspath(
+        os.path.join(BACKUP_ARCHIVE_ROOT_DIRECTORY, backup_name + ".tar.gz")
+    )
+
+    delete_file(archive_path)
+
+    checksum_file_pattern = os.path.abspath(
+        os.path.join(BACKUP_ARCHIVE_ROOT_DIRECTORY, backup_name + ".*")
+    )
+
+    for checksum_file in glob.glob(checksum_file_pattern):
+        if not checksum_file.endswith(".tar.gz"):
+            delete_file(checksum_file)
 
 
 def delete_dir(dirname):
@@ -378,6 +427,41 @@ def delete_dir(dirname):
             "red",
         )
         printstyled("FILE I/O EXCEPTION: {}".format(ex), "red")
+
+
+def generate_checksum(file_path, algorithm="sha256"):
+    """
+    Generates a checksum for a file using the specified algorithm.
+
+    Args:
+        file_path (str): The path to the file for which to generate the checksum.
+        algorithm (str, optional): The hash algorithm to use. Defaults to 'sha256'.
+
+    Returns:
+        Tuple[str, str]: The calculated checksum as a hexadecimal string
+        and the algorithm used to calculate the checksum.
+
+    Raises:
+        FileNotFoundError: If the specified file does not exist.
+
+    Supported Algorithms:
+
+    * Secure Hash Algorithms (SHA):
+        * SHA-1 (less secure)
+        * SHA-2 family: SHA-224, SHA-256, SHA-384, SHA-512
+        * SHA-3 family: SHA3-224, SHA3-256, SHA3-384, SHA3-512, SHAKE-128, SHAKE-256
+    * MD5: Older, less secure, not recommended for new applications.
+    * BLAKE2: Modern, secure hash functions (BLAKE2b, BLAKE2s)
+    """
+    if not os.path.exists(file_path):
+        printstyled("FILE I/O: FILE TO CALCULATE CHECKSUM DOES NOT EXIST.", "red")
+        raise FileNotFoundError("File not found: {}".format(file_path))
+
+    hash_obj = hashlib.new(algorithm)
+    with open(file_path, "rb") as f:
+        for chunk in iter(lambda: f.read(4096), b""):
+            hash_obj.update(chunk)
+    return hash_obj.hexdigest(), algorithm
 
 
 """
@@ -402,6 +486,7 @@ def configuration_print():
     printstyled("{}: {}".format("SLACK_CHANNEL", SLACK_CHANNEL), "blue")
     printstyled("{}: {}".format("BACKUP_ALL_BRANCHES", BACKUP_ALL_BRANCHES), "blue")
     printstyled("{}: {}".format("BACKUP_ROOT_DIRECTORY", BACKUP_ROOT_DIRECTORY), "blue")
+    printstyled("{}: {}".format("BACKUP_ARCHIVE_ROOT_DIRECTORY", BACKUP_ARCHIVE_ROOT_DIRECTORY), "blue")
     printstyled("{}: {}".format("BACKUP_MAX_RETRIES", BACKUP_MAX_RETRIES), "blue")
     printstyled("{}: {}".format("BACKUP_MAX_FAILS", BACKUP_MAX_FAILS), "blue")
     printstyled(
@@ -415,7 +500,7 @@ def configuration_print():
 def configuration_import():
     global AUTH, OAUTH_CLIENT_KEY_OR_ID, OAUTH_CLIENT_SECRET, OAUTH_CLIENT_NAME, CONFIG_UID, CONFIG_PWD, CONFIG_TEAM
     global SLACK_API_TOKEN, SLACK_CHANNEL, BACKUP_ROOT_DIRECTORY, BACKUP_MAX_RETRIES, BACKUP_MAX_FAILS
-    global BACKUP_ALL_BRANCHES, BACKUP_MIN_FREESPACE_GIGA, BACKUP_STORE_DAYS
+    global BACKUP_ALL_BRANCHES, BACKUP_MIN_FREESPACE_GIGA, BACKUP_STORE_DAYS, BACKUP_ARCHIVE_ROOT_DIRECTORY
 
     CONFIG_FILE_PATH = APP_PATH + "/" + APP_CONFIG_FILE
     if not os.path.exists(CONFIG_FILE_PATH):
@@ -474,6 +559,7 @@ def configuration_import():
         SLACK_CHANNEL = config_file.get("slack", "channel_to_post")
         BACKUP_ALL_BRANCHES = config_file.get("backup", "all_branches")
         BACKUP_ROOT_DIRECTORY = config_file.get("backup", "filepath")
+        BACKUP_ARCHIVE_ROOT_DIRECTORY = config_file.get("backup", "archive_path")
         BACKUP_MAX_RETRIES = config_file.getint("backup", "max_retries")
         BACKUP_MAX_FAILS = config_file.getint("backup", "max_fails")
         BACKUP_MIN_FREESPACE_GIGA = config_file.getint("backup", "min_free_space")
@@ -564,6 +650,9 @@ def configuration_export():
     )
     config_file.set(
         "backup", "filepath", configuration_stringify(BACKUP_ROOT_DIRECTORY)
+    )
+    config_file.set(
+        "backup", "archive_path", configuration_stringify(BACKUP_ARCHIVE_ROOT_DIRECTORY)
     )
     config_file.set(
         "backup", "max_retries", configuration_stringify(BACKUP_MAX_RETRIES)
@@ -689,7 +778,7 @@ def slack_config_load(should_ask=True):
     if not should_ask:
         return
 
-    if SLACK_API_TOKEN == None or SLACK_CHANNEL == None:
+    if SLACK_API_TOKEN is None or SLACK_CHANNEL is None:
         printstyled("SLACK: CONFIG NOT FOUND.", "red")
         if is_running_interactively() and slackconfig:
             print("---    PLEASE ENTER SLACK CHANNEL AND API TOKEN NOW    ---")
@@ -711,7 +800,8 @@ def slack_config_load(should_ask=True):
             if slackconfig:
                 exit_with_code(
                     4,
-                    "Missing credentials could not be requested interactively, because script not running in tty/shell context.",
+                    "Missing credentials could not be requested interactively, "
+                    "because script not running in tty/shell context.",
                 )
     else:
         printstyled("SLACK: CONFIGURED.", "green")
@@ -851,7 +941,7 @@ def bitbucket_config_load(should_ask=True):
     if not should_ask:
         return
 
-    if CONFIG_UID == None or CONFIG_PWD == None:
+    if CONFIG_UID is None or CONFIG_PWD is None:
         printstyled("BITBUCKET: NOT CONFIGURED.", "red")
         if is_running_interactively():
             print("--- PLEASE ENTER CREDENTIALS FOR BITBUCKET ACCOUNT NOW ---")
@@ -878,7 +968,8 @@ def bitbucket_config_load(should_ask=True):
         else:
             exit_with_code(
                 2,
-                "Missing credentials could not be requested interactively, because script not running in tty/shell context.",
+                "Missing credentials could not be requested interactively, "
+                "because script not running in tty/shell context.",
             )
     else:
         printstyled("BITBUCKET: CONFIGURED.", "green")
@@ -886,6 +977,7 @@ def bitbucket_config_load(should_ask=True):
 
 # REMOVES ALL STORED CREDENTIALS FROM SECURE STORAGE
 def bitbucket_config_reset():
+    global CONFIG_UID, CONFIG_PWD, CONFIG_TEAM
     printstyled("BITBUCKET: RESETTING CONFIG...", "cyan")
     ring = None
     try:
@@ -923,7 +1015,7 @@ def repo_status_set(repo_path, status, content):
     filename_status = "{}.{}".format(repo_path, status)
     if os.path.exists(filename_status):
         os.remove(filename_status)
-    if content == None:
+    if content is None:
         content = status
     write_file(filename_status, content)
 
@@ -974,10 +1066,10 @@ def mark_repo_clear(repo_path):
 
 
 def backup_archive_system_stats():
-    BACKUP_LOCAL_PATH = os.path.abspath(
+    backup_local_path = os.path.abspath(
         os.path.join(BACKUP_ROOT_DIRECTORY, BACKUP_ARCHIVE_DIRECTORY)
     )
-    size_of_directory = get_size(BACKUP_LOCAL_PATH)
+    size_of_directory = get_size(backup_local_path)
     string_dirsize = "Storage size used by backup: {}".format(
         sizeof_fmt(size_of_directory)
     )
@@ -1083,10 +1175,10 @@ def backup_archive_name_for_datetime_utc(timestamp_utc):
 def backup_archive_exists_with_name(directory_name):
     if not directory_name:
         return False
-    BACKUP_LOCAL_PATH = os.path.abspath(
+    backup_local_path = os.path.abspath(
         os.path.join(BACKUP_ROOT_DIRECTORY, directory_name)
     )
-    return os.path.exists(BACKUP_LOCAL_PATH)
+    return os.path.exists(backup_local_path)
 
 
 def backup_archive_rotate_with_days(days_into_past_keep, days_into_past_scope):
@@ -1107,16 +1199,17 @@ def backup_archive_rotate_with_days(days_into_past_keep, days_into_past_scope):
                 "green",
                 "bold",
             )
-            if should_remove:  # REMOVE(!!!) complete backupfolder
+            if should_remove:  # REMOVE(!!!) complete backup folder
                 printstyled(
                     "ROTATION: DESTROYING {}".format(current_archive_name),
                     "magenta",
                     "bold",
                 )
-                BACKUP_LOCAL_PATH = os.path.abspath(
+                backup_local_path = os.path.abspath(
                     os.path.join(BACKUP_ROOT_DIRECTORY, current_archive_name)
                 )
-                delete_dir(BACKUP_LOCAL_PATH)
+                delete_archive_and_checksum(current_archive_name)
+                delete_dir(backup_local_path)
         else:
             printstyled(
                 "ROTATION: BACKUP NOT EXISTING: {}; SHOULD DELETE == {}".format(
@@ -1446,6 +1539,14 @@ def bitbucket_analyze(repositories):
         )
         return
 
+    if not os.path.exists(BACKUP_ARCHIVE_ROOT_DIRECTORY):
+        printstyled(
+            "BACKUP: ARCHIVE DIRECTORY NOT FOUND {}".format(BACKUP_ARCHIVE_ROOT_DIRECTORY),
+            "red",
+            "bold",
+        )
+        return
+
     # check if enough free space on volume available
     estimated_size_bytes = bitbucket_estimated_size_repos(repositories)
     estimated_five_times = estimated_size_bytes * 5
@@ -1479,7 +1580,7 @@ def bitbucket_analyze(repositories):
                 "bold",
             )
 
-    BACKUP_LOCAL_PATH = os.path.abspath(
+    backup_local_path = os.path.abspath(
         os.path.join(BACKUP_ROOT_DIRECTORY, BACKUP_ARCHIVE_DIRECTORY)
     )
     printstyled(
@@ -1488,11 +1589,49 @@ def bitbucket_analyze(repositories):
         ),
         "cyan",
     )
-    if os.path.exists(BACKUP_LOCAL_PATH):
-        printstyled("BACKUP: DIRECTORY OK {}".format(BACKUP_LOCAL_PATH), "cyan", "bold")
+    if os.path.exists(backup_local_path):
+        printstyled("BACKUP: DIRECTORY OK {}".format(backup_local_path), "cyan", "bold")
     else:
         printstyled(
-            "BACKUP: DIRECTORY MISSING {}".format(BACKUP_LOCAL_PATH), "cyan", "bold"
+            "BACKUP: DIRECTORY MISSING {}".format(backup_local_path), "cyan", "bold"
+        )
+
+    backup_local_archive_path = os.path.abspath(BACKUP_ARCHIVE_ROOT_DIRECTORY)
+
+    printstyled(
+        "BACKUP: CHECKING... {} FOR ARCHIVE BACKUP... {}".format(
+            BACKUP_ARCHIVE_ROOT_DIRECTORY, BACKUP_ARCHIVE_DIRECTORY
+        ),
+        "cyan",
+    )
+    if os.path.exists(backup_local_archive_path):
+        printstyled("BACKUP: ARCHIVE DIRECTORY OK {}".format(backup_local_archive_path), "cyan", "bold")
+    else:
+        printstyled(
+            "BACKUP: ARCHIVE DIRECTORY MISSING {}".format(backup_local_archive_path), "cyan", "bold"
+        )
+
+    if os.path.exists(os.path.abspath(
+            os.path.join(BACKUP_ARCHIVE_ROOT_DIRECTORY, BACKUP_ARCHIVE_DIRECTORY + ".tar.gz")
+    )):
+        printstyled(
+            "BACKUP: ARCHIVE FILE OK {}".format(
+                os.path.abspath(
+                    os.path.join(BACKUP_ARCHIVE_ROOT_DIRECTORY, BACKUP_ARCHIVE_DIRECTORY + ".tar.gz")
+                )
+            ),
+            "cyan",
+            "bold",
+        )
+    else:
+        printstyled(
+            "BACKUP: ARCHIVE FILE MISSING {}".format(
+                os.path.abspath(
+                    os.path.join(BACKUP_ARCHIVE_ROOT_DIRECTORY, BACKUP_ARCHIVE_DIRECTORY + ".tar.gz")
+                )
+            ),
+            "cyan",
+            "bold",
         )
 
     printstyled(
@@ -1504,18 +1643,18 @@ def bitbucket_analyze(repositories):
 
     for repo in repositories:
         repo_slug = repo["slug"]
-        BACKUP_LOCAL_REPO_PATH = os.path.abspath(
-            os.path.join(BACKUP_LOCAL_PATH, repo_slug)
+        backup_local_repo_path = os.path.abspath(
+            os.path.join(backup_local_path, repo_slug)
         )
 
-        if os.path.exists(BACKUP_LOCAL_REPO_PATH) and repo_status_is(
-                BACKUP_LOCAL_REPO_PATH, STATUS_DONE
+        if os.path.exists(backup_local_repo_path) and repo_status_is(
+                backup_local_repo_path, STATUS_DONE
         ):
             printstyled("SECURED: {}".format(repo_slug), "green")
             counted_done += 1
         else:
-            if os.path.exists(BACKUP_LOCAL_REPO_PATH) or repo_status_is(
-                    BACKUP_LOCAL_REPO_PATH, STATUS_SYNC
+            if os.path.exists(backup_local_repo_path) or repo_status_is(
+                    backup_local_repo_path, STATUS_SYNC
             ):
                 printstyled("ABORTED: {}".format(repo_slug), "yellow")
                 counted_sync += 1
@@ -1540,6 +1679,7 @@ def bitbucket_clone(repos):
     backup_local_path = os.path.abspath(
         os.path.join(BACKUP_ROOT_DIRECTORY, BACKUP_ARCHIVE_DIRECTORY)
     )
+    backup_archive_local_path = os.path.abspath(BACKUP_ARCHIVE_ROOT_DIRECTORY)
     printstyled(
         "BACKUP: CHECKING... {} FOR BACKUP... {}".format(
             BACKUP_ROOT_DIRECTORY, BACKUP_ARCHIVE_DIRECTORY
@@ -1548,6 +1688,7 @@ def bitbucket_clone(repos):
     )
 
     ensure_directory_exists(backup_local_path)
+    ensure_directory_exists(backup_archive_local_path)
 
     # check if enough free space on volume available
     estimated_size_bytes = bitbucket_estimated_size_repos(repos)
@@ -1742,6 +1883,9 @@ def bitbucket_clone(repos):
                 "warn",
             )
 
+    if failed_repos == 0:
+        create_tar_gz_file()
+
 
 """
 **********************************
@@ -1790,11 +1934,18 @@ main_parser.add_argument(
     help="Absolute path to a directory which will hold the managed backups",
 )
 main_parser.add_argument(
+    "--archive-path",
+    dest="archive_path",
+    required=False,
+    help="Absolute path to a directory which will hold the managed archive backups",
+)
+main_parser.add_argument(
     "-c",
     "--configuration",
     dest="configfile",
     required=False,
-    help="Absolute path to configuration file where all necessary parameters are kept\n*** WARNING: WILL OVERRIDE ALL COMMANDLINE ARGUMENTS LISTED HERE! ***",
+    help="Absolute path to configuration file where all necessary parameters are kept\n"
+         "*** WARNING: WILL OVERRIDE ALL COMMANDLINE ARGUMENTS LISTED HERE! ***",
 )
 parser.set_defaults(filepath=None)
 parser.set_defaults(configfile=None)
@@ -2002,7 +2153,8 @@ configexport_parser.add_argument(
     dest="config_export_mode",
     action="store_true",
     required=False,
-    help="Write/export current context and parameters to file '{}'\nThis will create a config-file where OAUTH, ACCOUNT & SLACK info is stored/exported".format(
+    help="Write/export current context and parameters to file '{}'\n"
+         "This will create a config-file where OAUTH, ACCOUNT & SLACK info is stored/exported".format(
         APP_CONFIG_FILE
     ),
 )
@@ -2068,6 +2220,7 @@ config_export_mode = args.config_export_mode
 config_import_mode = args.config_import_mode
 config_from_file = args.configfile
 filepath_backup_dir = args.filepath
+archive_backup_dir = args.archive_path
 
 # START
 printstyled("BACKUP: WELCOME.", "cyan")
@@ -2138,6 +2291,9 @@ if not CONFIG_TEAM:
 if filepath_backup_dir:
     BACKUP_ROOT_DIRECTORY = filepath_backup_dir
 
+if archive_backup_dir:
+    BACKUP_ARCHIVE_ROOT_DIRECTORY = archive_backup_dir
+
 if config_export_mode:
     configuration_print()
     configuration_export()
@@ -2150,8 +2306,15 @@ if not config_from_file:  # THEN CHECK CONFIG FROM FILEPATH PARAMETER
             "red",
         )
         exit_with_code(7)
+    elif not archive_backup_dir or len(archive_backup_dir) == 0:
+        printstyled(
+            "WARNING: The given ARCHIVE-PATH for storing backups was missing or invalid.",
+            "red",
+        )
+        exit_with_code(7)
     else:
         BACKUP_ROOT_DIRECTORY = filepath_backup_dir
+        BACKUP_ARCHIVE_ROOT_DIRECTORY = archive_backup_dir
 
 # WARNING: THIS WILL OVERRIDE ALL PREVIOUS CONFIG FROM COMMANDLINE
 if config_from_file:
