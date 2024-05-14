@@ -203,6 +203,7 @@ optional arguments:
   -w WARNING_LIMIT, --warning-limit WARNING_LIMIT
                         Amount of failed repos allowed before we assume failure
                         [DEFAULT = 3]
+  --archive-path        Absolute path to a directory which will hold the managed archived backups
   --backup              Will start/continue a full backup
   --no-backup           [DEFAULT] Will analyze existing backup
   --retry               [DEFAULT] Retry failed backup automatically
